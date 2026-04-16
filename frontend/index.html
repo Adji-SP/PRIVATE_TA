@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulator Sistem Pengendalian Panci Bertekanan</title>
+    <!-- Memuat Tailwind CSS untuk styling responsif -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js"></script>
+
+
+
+    <style>
+        /* Menggunakan font Inter secara default */
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+
+        /* Style untuk tab aktif - Warna biru tua (mirip gambar) */
+        .tab-active {
+            background-color: #1e3a8a;
+            color: white;
+            font-weight: 600;
+            border-bottom: none;
+        }
+
+        /* Container aplikasi: Di desktop, dibuat sangat padat tanpa scroll */
+        .app-container {
+            max-width: 1400px;
+            padding: 8px 24px;
+            margin: 20px auto;
+            border-radius: 12px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            background-color: white;
+            /* Override di mobile */
+            min-height: 100vh;
+            margin: 0;
+            border-radius: 0;
+        }
+        @media (min-width: 1024px) {
+            .app-container {
+                margin: 5px auto;
+                border-radius: 12px;
+                min-height: auto;
+                /* Mengatur tinggi maksimum untuk mencegah scroll di desktop */
+                max-height: 99vh;
+                overflow-y: hidden; /* MEMAKSA NO SCROLL PADA CONTAINER UTAMA */
+            }
+        }
+
+        /* Style Panci agar menyerupai 3D */
+        .vessel-3d {
+            width: 150px;
+            height: 250px;
+            border: 4px solid #1e40af;
+            border-radius: 0 0 75px 75px;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column-reverse;
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.3);
+            background-color: #f7f9fb;
+        }
+        .liquid {
+            width: 100%;
+            background: linear-gradient(to top, #7c3aed 0%, #2563eb 50%, #60a5fa 100%);
+            transition: height 0.5s ease-in-out;
+            box-shadow: 0 0 15px rgba(124, 58, 237, 0.5);
+        }
+
+        /* Style untuk Control Input (agar sejajar dan rapi) */
+        .control-row {
+            display: grid;
+            grid-template-columns: 1fr max-content 60px max-content;
+            gap: 6px;
+            align-items: center;
+        }
+        .control-input {
+            width: 100%;
+            padding: 2px;
+            border-radius: 4px;
+            border: 1px solid #d1d5db;
+            text-align: right;
+            outline: none;
+        }
+
+        .monitor-value {
+            font-weight: 600;
+            color: #1f2937;
+        }
+        /* Mengurangi tinggi maksimum Log Table agar lebih padat */
+        .log-table-container {
+            max-height: 100px; /* Diperkecil agar Menu 2 muat di Baris 1 */
+            overflow-y: auto;
+        }
+
+        /* Graph Height Adjustment (Diturunkan) */
+        .graph-area {
+            height: 100px; /* Diperkecil */
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <div class="app-container">
+
+        <!-- HEADER APLIKASI (Dirapatkan) -->
+        <header class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-1 pb-1">
+            <div class="space-y-0.5">
+                <h1 class="text-lg font-bold text-gray-800">Simulator Sistem Pengendalian Panci Bertekanan</h1>
+               <p class="text-xs text-gray-500">Logged in as: <span id="logged-in-user" class="font-medium text-blue-600">auliazqi</span></p>
+            </div>
+            <div class="text-right space-y-0.5 mt-1 sm:mt-0">
+                <p class="text-xs text-gray-700" id="current-date-display">--</p>
+                <p class="text-md font-extrabold text-red-600" id="current-time-display">--:--:--</p>
+                <button class="bg-red-500 hover:bg-red-600 text-white text-xs font-semibold py-0.5 px-3 rounded-lg shadow transition duration-150" onclick="logoutUser()">
+    			LOGOUT
+		</button>
+            </div>
+        </header>
+
+        <!-- NEW: Status Message Area for DB Operations -->
+        <div id="status-message" class="hidden text-center text-xs p-1 rounded mb-1"></div>
+
+        <!-- TAB NAVIGATION -->
+        <nav class="flex border-b-2 border-blue-900 bg-blue-900 rounded-t-lg overflow-hidden">
+            <button id="tab-temp" onclick="showTab('temperature')" class="p-2 text-xs md:text-sm flex-1 text-center tab-active transition-colors duration-200">CONTROL AND MONITORING TEMPERATURE</button>
+            <button id="tab-pressure" onclick="showTab('pressure')" class="p-2 text-xs md:text-sm flex-1 text-center bg-blue-800 text-gray-300 hover:bg-blue-700 transition-colors duration-200">SAFETY PRESSURE MONITORING SYSTEM</button>
+        </nav>
+
+     <!-- TAB NAVIGATION klik menu 2-->
+    <a href="#" class="nav-link active" data-target="menu1-content" onclick="changeMenu('menu1-content')">
+    </a>
+
+    <a href="#" class="nav-link" data-target="menu2-content" onclick="changeMenu('menu2-content')">
+    </a>
+
+        <!-- TAB CONTENT CONTAINER -->
+        <div id="tab-content-container" class="pt-2">
+
+            <!-- 1. TAB KONTROL & MONITORING TEMPERATURE (TIDAK BERUBAH) -->
+            <div id="temperature-tab" class="tab-content">
+
+                <!-- Layout Utama: Kolom di Desktop, Stack di Mobile -->
+                <div class="flex flex-col lg:flex-row lg:space-x-4 space-y-2 lg:space-y-0">
+
+                    <!-- KIRI (1/3): SIMULASI TANGKI / WADAH -->
+                    <div class="lg:w-1/3 flex justify-center items-center p-1 bg-gray-50 rounded-lg shadow-inner lg:min-h-[500px] min-h-[280px]">
+                        <div class="vessel-3d">
+                            <!-- Air/Isi Panci -->
+                            <div id="liquid-level" class="liquid" style="height: 50%;"></div>
+                        </div>
+                    </div>
+
+                    <!-- KANAN (2/3): KONTROL, MONITORING, LOG, DAN GRAFIK -->
+                    <div class="lg:w-2/3 space-y-1"> <!-- space-y dikurangi -->
+
+                        <!-- KONTROL & MONITORING (Dirapatkan) -->
+                        <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4">
+                            <!-- KONTROL (SETPOINT) -->
+                            <div class="sm:w-1/2 p-2 bg-blue-50 rounded-lg shadow-md border border-blue-200">
+                                <h3 class="font-semibold text-blue-800 mb-1 text-sm border-b pb-1">Control</h3>
+                                <div class="space-y-1 text-xs md:text-sm"> <!-- space-y dikurangi -->
+
+                                    <!-- Temperature Row -->
+                                    <div class="control-row">
+                                        <label>Temperature</label>
+                                        <input type="number" value="105" class="control-input" id="set-temp">
+                                        <span>°C</span>
+                                        <button class="bg-blue-600 text-white text-xs px-2 py-0.5 rounded hover:bg-blue-700 transition" data-input-id="set-temp" onclick="setControlValue(this)">Set</button>
+                                    </div>
+
+                                    <!-- Sampling Time Row -->
+                                    <div class="control-row">
+                                        <label>Sampling Time</label>
+                                        <input type="number" value="60" class="control-input" id="set-sampling">
+                                        <span>Sec</span>
+                                        <button class="bg-blue-600 text-white text-xs px-2 py-0.5 rounded hover:bg-blue-700 transition" data-input-id="set-sampling" onclick="setControlValue(this)">Set</button>
+                                    </div>
+
+                                    <!-- Kp Row -->
+                                    <div class="control-row">
+                                        <label>Kp</label>
+                                        <input type="number" value="13" class="control-input" id="set-kp">
+                                        <span></span>
+                                        <button class="bg-blue-600 text-white text-xs px-2 py-0.5 rounded hover:bg-blue-700 transition" data-input-id="set-kp" onclick="setControlValue(this)">Set</button>
+                                    </div>
+                                </div>
+                                <button id="export-temp-csv"
+        class="mt-2 w-full bg-green-600 text-white text-xs py-1 rounded hover:bg-green-700 transition shadow-lg">
+    Export Temperature Log Data to CSV
+</button>
+                            </div>
+
+                            <!-- MONITORING (AKTUAL) -->
+                            <div class="sm:w-1/2 p-2 bg-gray-100 rounded-lg shadow-md border border-gray-300">
+                                <h3 class="font-semibold text-gray-800 mb-1 text-sm border-b pb-1">Monitoring</h3>
+                                <div class="space-y-1 text-xs md:text-sm"> <!-- space-y dikurangi -->
+                                    <div class="flex justify-between items-center border-b pb-0.5">
+                                        <span>Temperature (Setpoint)</span>
+                                        <span class="monitor-value text-blue-600" id="monitor-set-temp">105 °C</span>
+                                    </div>
+                                    <div class="flex justify-between items-center border-b pb-0.5">
+                                        <span>Temperature (Current)</span>
+                                        <span class="monitor-value text-xl text-red-600" id="monitor-current-temp">96.82 °C</span>
+                                    </div>
+                                    <div class="flex justify-between items-center border-b pb-0.5">
+                                        <span>Time Samples</span>
+                                        <span class="monitor-value" id="monitor-sampling">60 s</span>
+                                    </div>
+                                    <div class="flex justify-between items-center border-b pb-0.5">
+                                        <span>Kp</span>
+                                        <span class="monitor-value" id="monitor-kp">10</span>
+                                    </div>
+                                    <div class="flex justify-between items-center pt-0.5">
+                                        <span>Date/Time</span>
+                                        <span class="monitor-value text-xs" id="monitor-datetime-display">15:33:03</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- LOG DATA TABLE -->
+                        <div class="bg-white border rounded-lg shadow-md overflow-hidden">
+                            <h3 class="font-semibold text-gray-800 p-1 bg-gray-200 border-b text-sm">Data Log Temperature</h3>
+                            <div class="log-table-container">
+                                <table class="min-w-full divide-y divide-gray-200 text-xs">
+                                    <thead class="bg-gray-100 sticky top-0">
+                                        <tr>
+                                            <th class="py-0.5 px-1 text-left font-medium text-gray-600">NO</th>
+                                            <th class="py-0.5 px-1 text-left font-medium text-gray-600">SAMPLING TIME</th>
+                                            <th class="py-0.5 px-1 text-left font-medium text-gray-600">TIME</th>
+                                            <th class="py-0.5 px-1 text-left font-medium text-gray-600">TEMPERATURE (°C)</th>
+                                            <th class="py-0.5 px-1 text-left font-medium text-gray-600">VOLTAGE (mV)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-100" id="log-table-body">
+                                        <!-- Data Log Simulasi akan diisi oleh JavaScript -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- GRAFIK (Placeholder Sederhana) -->
+                        <div class="bg-white border rounded-lg shadow-md p-1">
+    <h3 class="font-semibold text-gray-800 mb-1 text-sm">Graph Temperature (°C) vs Time (Seconds)</h3>
+    <div class="graph-area">
+        <canvas id="tempChartCanvas"></canvas>
+    </div>
+    <p class="text-center text-xs text-gray-500 mt-0.5">Real-Time Data Plot</p>
+</div>
+
+                    </div>
+                </div>
+
+                <!-- FOOTER KONTROL -->
+                <div class="flex flex-col sm:flex-row justify-between items-center mt-2 pt-2 border-t border-gray-300 space-y-2 sm:space-y-0">
+    <div class="space-x-4">
+        <button class="bg-gray-500 hover:bg-gray-600 text-white font-semibold py-1 px-4 rounded-lg shadow transition" id="save-temp-vars">
+            Save Variables
+        </button>
+        
+        <button id="btn-footer-rec-temp" onclick="toggleRecording('temperature')" 
+                class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-1 px-4 rounded-lg shadow transition duration-150">
+            START REC
+        </button>
+        
+        <span id="rec-status-temp" class="text-xs text-red-600 font-mono ml-2"></span>
+    </div>
+    <p class="text-sm text-gray-600">Actuator Validation: <span class="font-bold text-green-600" id="actuator-validation">70%</span></p>
+</div>
+
+            </div>
+
+            <!-- 2. TAB MONITORING TEKANAN (Menu 2 - Disesuaikan Layout 4 Baris Penuh) -->
+            <div id="pressure-tab" class="tab-content hidden">
+
+                <h2 class="text-lg font-bold text-gray-800 mb-2 pb-1 text-center hidden lg:block">SAFETY PRESSURE MONITORING SYSTEM</h2>
+
+                <!-- CONTAINER BARIS-BARIS WIDGET -->
+                <div class="space-y-2">
+
+                    <!-- BARIS 1: Setting (1/3) + Gauge (1/3) + Log Data (1/3) -->
+                    <div class="flex flex-col sm:flex-row sm:space-x-2 space-y-2 sm:space-y-0">
+
+                        <!-- KOLOM 1 (1/3): SETTING -->
+                        <div class="sm:w-1/3 p-2 bg-blue-50 rounded-lg shadow-md border border-blue-200">
+                            <h3 class="font-semibold text-blue-800 mb-1 text-sm border-b pb-1">Setting</h3>
+                            <div class="space-y-1 text-xs md:text-sm">
+                                <!-- Tekanan Setpoint Row -->
+                                <div class="control-row">
+                                    <label>Set Pressure</label>
+                                    <input type="number" value="1.3" class="control-input" id="set-pressure" step="0.1" min="0" max="2.5">
+                                    <span>Bar</span>
+                                    <button class="bg-blue-600 text-white text-xs px-2 py-0.5 rounded hover:bg-blue-700 transition" data-input-id="set-pressure" onclick="setControlValue(this)">Set</button>
+                                </div>
+                                <!-- Sampling Time Row -->
+                                <div class="control-row">
+                                    <label>Sampling Time</label>
+                                    <input type="number" value="60" class="control-input" id="set-pressure-sampling">
+                                    <span>Sec</span>
+                                    <button class="bg-blue-600 text-white text-xs px-2 py-0.5 rounded hover:bg-blue-700 transition" data-input-id="set-pressure-sampling" onclick="setControlValue(this)">Set</button>
+                                    <div class="bg-white border rounded-lg shadow-md p-2 mt-2 flex space-x-2">
+    
+    <div class="flex flex-col items-start w-1/2">
+        <span class="text-[10px] font-bold text-gray-600 mb-1 text-left leading-tight">
+            Export<br>CSV
+        </span>
+        <button id="export-pressure-csv"
+                class="w-full h-full bg-green-600 text-white text-[10px] py-1 px-1 rounded hover:bg-green-700 transition shadow-sm leading-tight text-center flex items-center justify-center">
+            Export<br>Pressure Log
+        </button>
+    </div>
+
+    <div class="flex flex-col items-start w-1/2">
+        <span class="text-[10px] font-bold text-orange-500 mb-1 text-left leading-tight">
+            SIS<br>Simulation
+        </span>
+        <button id="btn-system-toggle" onclick="toggleSystem()" 
+                class="w-full h-full bg-red-500 text-white text-xs font-bold py-1 px-1 rounded shadow-sm hover:opacity-90 transition-colors duration-200">
+            OFF
+        </button>
+    </div>
+
+</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- KOLOM 2 (1/3): GAUGE -->
+                        <div class="sm:w-1/3 p-2 bg-gray-100 rounded-lg shadow-md border border-gray-300 flex flex-col items-center">
+                            <h3 class="font-semibold text-gray-800 mb-1 text-sm border-b pb-1 w-full text-center">Pressure Gauge</h3>
+                            <div class="flex flex-grow items-center justify-center space-x-2 w-full">
+                            
+                                <!-- Placeholder SVG Gauge (0-2.5 Bar) -->
+                                <svg viewBox="0 0 200 110" class="w-48 h-24">
+    <defs>
+        <linearGradient id="gradientGauge" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" style="stop-color:#10b981;stop-opacity:1" /> <stop offset="50%" style="stop-color:#f59e0b;stop-opacity:1" /> <stop offset="100%" style="stop-color:#ef4444;stop-opacity:1" /> </linearGradient>
+    </defs>
+    
+    <path d="M 20 90 A 80 80 0 0 1 180 90" fill="none" stroke="url(#gradientGauge)" stroke-width="15" stroke-linecap="round" />
+    
+    <text x="20" y="105" text-anchor="middle" font-size="15" fill="#6b7280" font-weight="bold">0</text>
+    <text x="180" y="105" text-anchor="middle" font-size="15" fill="#6b7280" font-weight="bold">2.5</text>
+
+    <g id="gauge-needle" transform="translate(100, 90) rotate(-90)">
+        <polygon points="-3,0 3,0 0,-70" fill="#ef4444" />
+        <circle cx="0" cy="0" r="5" fill="#374151" />
+    </g>
+
+    <text x="100" y="70" text-anchor="middle" font-size="22" fill="#1f2937" font-weight="bold" id="current-pressure-display">0.00</text>
+    <text x="100" y="85" text-anchor="middle" font-size="10" fill="#6b7280">Bar</text>
+</svg>
+                            </div>
+                        </div>
+
+                        <!-- KOLOM 3 (1/3): LOG DATA TABLE -->
+                        <div class="sm:w-1/3 bg-white border rounded-lg shadow-md overflow-hidden">
+                            <h3 class="font-semibold text-gray-800 p-1 bg-gray-200 border-b text-sm">Data Log Pressure</h3>
+                            <div class="log-table-container">
+                                <table class="min-w-full divide-y divide-gray-200 text-xs">
+                                    <thead class="bg-gray-100 sticky top-0">
+                                        <tr>
+                                            <th class="py-0.5 px-1 text-left font-medium text-gray-600">NO</th>
+                                            <th class="py-0.5 px-1 text-left font-medium text-gray-600">SAMPLING TIME</th>
+                                            <th class="py-0.5 px-1 text-left font-medium text-gray-600">TIMESTAMP</th>
+                                            <th class="py-0.5 px-1 text-left font-medium text-gray-600">PRESSURE (Bar)</th>
+                                            <th class="py-0.5 px-1 text-left font-medium text-gray-600">VOLTAGE (mV)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-100" id="log-data-pressure-body">
+                                        <!-- Data Log Simulasi akan diisi oleh JavaScript -->
+        </tbody>
+    </table>
+</div>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div> <!-- End of BARIS 1 -->
+
+                    <!-- BARIS 2: Real-time Sensor Readings (1/2) + Solenoid Status (1/2) -->
+                    <div class="flex flex-col sm:flex-row sm:space-x-2 space-y-2 sm:space-y-0">
+                        <!-- KOLOM 1 (1/2): REAL-TIME READINGS (Termasuk Runtime & Data Points) -->
+                        <div class="sm:w-1/2 p-2 bg-gray-50 rounded-lg shadow-md border border-gray-200 space-y-1">
+                            <h3 class="font-semibold text-gray-800 mb-1 text-sm border-b pb-1">Real-Time Sensor Readings</h3>
+                            <div class="flex justify-between items-center text-xs">
+                                <span>Real-time Temperature</span>
+                                <span class="monitor-value text-blue-600" id="pressure-rt-temp">98.41 °C</span>
+                            </div>
+                            <div class="flex justify-between items-center text-xs pb-1 border-b">
+                                <span>Real-time Pressure</span>
+                                <span class="monitor-value text-red-600 text-base" id="pressure-rt-pressure">2.44 Bar</span>
+                            </div>
+                            <!-- System Runtime & Data Points -->
+                            <div class="flex justify-between items-center text-xs pt-1">
+                                <span>System Runtime</span>
+                                <span class="monitor-value" id="system-runtime">00:01:25 Sec</span>
+                            </div>
+                            <div class="flex justify-between items-center text-xs">
+                                <span>Data Points</span>
+                                <span class="monitor-value" id="data-points">53</span>
+                            </div>
+                        </div>
+
+                        <!-- KOLOM 2 (1/2): SOLENOID VALVE & SYSTEM STATUS -->
+                        <div class="sm:w-1/2 p-2 bg-gray-50 rounded-lg shadow-md border border-gray-200 space-y-1">
+                            <h3 class="font-semibold text-gray-800 mb-1 text-sm border-b pb-1">Solenoid Valve & System Status</h3>
+                            <div class="flex justify-between items-center text-xs">
+                                <span>Solenoid Valve 1</span>
+                                <button class="text-white text-xs px-2 py-0.5 rounded bg-gray-500" disabled id="sv1-status">OFF</button>
+                            </div>
+                            <div class="flex justify-between items-center text-xs pb-1 border-b">
+                                <span>Solenoid Valve 2</span>
+                                <button class="text-white text-xs px-2 py-0.5 rounded bg-green-600" disabled id="sv2-status">ON</button>
+                            </div>
+                            <div class="flex justify-between items-center text-xs pt-1">
+                                <span>STATUS ALARM</span>
+                                <span class="monitor-value text-gray-600 font-bold" id="alarm-status">OFF</span>
+                            </div>
+                        </div>
+                    </div> <!-- End of BARIS 2 -->
+
+
+                    <!-- BARIS 3: Grafik baru -->
+
+<div class="mt-8">
+    <h3 class="text-xl font-semibold text-gray-700 mb-4 border-b pb-2">
+        Real-time Monitoring Charts
+    </h3>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+        <!-- GRAPH 1: PRESSURE -->
+        <div class="bg-white border rounded-lg shadow-md p-3">
+            <h3 class="font-semibold text-gray-800 mb-2 text-sm">Pressure (Bar) vs Time (Seconds)</h3>
+            <canvas id="pressureChart" class="w-full"></canvas>
+            <p class="text-center text-xs text-gray-500 mt-1">Real-Time Data Plot</p>
+        </div>
+
+        <!-- GRAPH 2: SV1 -->
+        <div class="bg-white border rounded-lg shadow-md p-3">
+            <h3 class="font-semibold text-gray-800 mb-2 text-sm">Solenoid Valve 1 Status</h3>
+            <canvas id="sv1Chart" class="w-full"></canvas>
+            <p class="text-center text-xs text-gray-500 mt-1">Real-Time Data Plot</p>
+        </div>
+
+        <!-- GRAPH 3: SV2 -->
+        <div class="bg-white border rounded-lg shadow-md p-3">
+            <h3 class="font-semibold text-gray-800 mb-2 text-sm">Solenoid Valve 2 Status</h3>
+            <canvas id="sv2Chart" class="w-full"></canvas>
+            <p class="text-center text-xs text-gray-500 mt-1">Real-Time Data Plot</p>
+        </div>
+
+    </div>
+</div>
+
+                    <!-- End of BARIS 3 -->
+
+
+                    <!-- BARIS 4: FOOTER CONTROL UNTUK MENU 2 -->
+
+<!-- ============================================================= -->
+<!-- FOOTER CONTROL UNTUK MENU 2 -->
+<!-- (Hidden default, akan muncul setelah kondisi tertentu) -->
+<!-- ============================================================= -->
+
+<div class="mt-8 pt-4 border-t flex flex-wrap items-center justify-between" id="footer-m2-controls">
+
+
+    <!-- Grup tombol kiri -->
+    <div class="flex space-x-4">
+
+        <!-- Tombol untuk ganti mode ke pressure control -->
+        <button class="bg-yellow-500 text-white p-2 rounded-lg hover:bg-yellow-600 font-medium shadow-md">
+            Switch To Pressure Control
+        </button>
+
+        <!-- Tombol untuk menyimpan variabel ke backend/ESP -->
+        <button id="save-data-btn" class="bg-green-500 text-white p-2 rounded-lg hover:bg-green-600 font-medium shadow-md">
+            Save Variables
+        </button>
+
+        <!-- Tombol stop / emergency stop -->
+        <button id="btn-footer-rec-pressure" onclick="toggleRecording('pressure')" class="bg-gray-500 hover:bg-gray-600 text-white p-2 rounded-lg font-bold shadow-md transition duration-150">
+    	    START REC
+	</button>
+
+
+    </div>
+
+    <!-- Dropdown validasi aktuator (SV1, SV2, Buzzer) -->
+    <div class="flex items-center space-x-2 mt-4 md:mt-0">
+        <label for="actuatorValidation" class="font-medium text-gray-700">
+            Actuator Validation
+        </label>
+
+        <select id="actuatorValidation" class="p-2 border rounded-lg shadow-sm">
+            <option>Solenoid Valve 1</option>
+            <option>Solenoid Valve 2</option>
+            <option>Buzzer</option>
+        </select>
+    </div>
+
+</div>
+
+                    </div> <!-- End of BARIS 4 -->
+
+                </div> <!-- End of CONTAINER BARIS-BARIS WIDGET -->
+
+
+                <!-- FOOTER KONTROL MENU 2 -->
+                <div class="flex justify-start items-center mt-2 pt-2 border-t border-gray-300">
+                    <button class="bg-gray-500 hover:bg-gray-600 text-white font-semibold py-1 px-4 rounded-lg shadow transition duration-150" id="save-pressure-vars">Save Variables</button>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+<div id="logout-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-60 overflow-y-auto h-full w-full z-50 flex items-center justify-center backdrop-blur-sm transition-opacity">
+    <div class="relative p-6 border w-96 shadow-xl rounded-xl bg-white transform transition-all scale-100">
+        
+        <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+            <svg class="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+        </div>
+
+        <div class="text-center">
+            <h3 class="text-lg leading-6 font-bold text-gray-900" id="modal-title">Konfirmasi Logout</h3>
+            <div class="mt-2 px-2 py-1">
+                <p class="text-sm text-gray-500">
+                    Apakah Anda yakin ingin keluar dari sistem?
+                </p>
+            </div>
+        </div>
+
+        <div class="mt-5 sm:mt-6 flex justify-center space-x-3">
+            <button onclick="cancelLogout()" class="w-1/2 inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-200 sm:text-sm">
+                Batal
+            </button>
+            
+            <button onclick="confirmLogout()" class="w-1/2 inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:text-sm">
+                Ya, Keluar
+            </button>
+        </div>
+    </div>
+</div>
+
+<script src="frontend.js"></script>
+</body>
+</html>

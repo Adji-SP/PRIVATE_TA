@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login & Sign Up (Local Laptop)</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
+    <style>
+        /* STYLE SAMA PERSIS SEPERTI SEBELUMNYA */
+        body { font-family: sans-serif; background-color: #6b7280; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 0; padding: 1rem; }
+        .header-text { text-align: center; margin-bottom: 2rem; color: #f3f4f6; font-weight: bold; font-size: 1.5rem; line-height: 1.25; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); }
+        @media (min-width: 768px) { .header-text { font-size: 1.875rem; } }
+        .auth-box { width: 100%; max-width: 28rem; background-color: white; border-radius: 1rem; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); padding: 2rem; border: 1px solid #e5e7eb; }
+        .tab-container { display: flex; border-bottom: 2px solid #e5e7eb; margin-bottom: 1.5rem; }
+        .tab-button { flex: 1; padding: 0.75rem; font-size: 1.125rem; font-weight: 600; border: none; background: none; cursor: pointer; color: #6b7280; }
+        .tab-button.active { color: #2563eb; border-bottom: 4px solid #2563eb; }
+        .form-section { text-align: center; }
+        .form-section h2 { font-size: 1.5rem; font-weight: bold; color: #374151; margin-bottom: 1.5rem; }
+        .form-group { margin-bottom: 1.5rem; text-align: left; }
+        .input-label { font-size: 0.875rem; font-weight: 500; color: #4b5563; display: block; margin-bottom: 0.5rem; }
+        .form-input { width: 100%; padding: 0.6rem 1rem; border: 1px solid #d1d5db; border-radius: 0.5rem; font-size: 1rem; box-sizing: border-box; }
+        .form-button { width: 100%; padding: 0.75rem 0; font-weight: 600; color: white; background-color: #2563eb; border-radius: 0.5rem; border: none; cursor: pointer; transition: background-color 0.3s; margin-top: 1.5rem; }
+        .form-button:hover { background-color: #1d4ed8; }
+        #signupForm .form-button { background-color: #f97316; }
+        #signupForm .form-button:hover { background-color: #ea580c; }
+        .error-message { color: red; font-size: 0.875rem; text-align: center; margin-top: -1rem; margin-bottom: 1rem; display: none; }
+    </style>
+</head>
+<body>
+
+<div class="header-text">
+    <h1>RANCANG BANGUN OPERASIONAL SIMULATOR SISTEM<br>PENGENDALIAN PANCI BERTEKANAN BERBASIS HP ANDROID</h1>
+</div>
+
+<div class="auth-box">
+    <div class="tab-container">
+        <button id="loginTab" class="tab-button active">Login</button>
+        <button id="signupTab" class="tab-button">Sign Up</button>
+    </div>
+
+    <div id="loginForm" class="form-section">
+        <form id="loginFormContent">
+            <h2>Welcome Back</h2>
+            <p id="loginError" class="error-message"></p>
+            <div class="form-group">
+                <label for="loginEmail" class="input-label">Email</label>
+                <input type="email" id="loginEmail" class="form-input" required />
+            </div>
+            <div class="form-group">
+                <label for="loginPassword" class="input-label">Password</label>
+                <input type="password" id="loginPassword" class="form-input" required />
+            </div>
+            <button type="submit" class="form-button">Login</button>
+        </form>
+    </div>
+
+    <div id="signupForm" class="form-section" style="display: none;">
+        <form id="signupFormContent">
+            <h2>Create Account</h2>
+            <p id="signupError" class="error-message"></p>
+            <div class="form-group">
+                <label for="signupUsername" class="input-label">Username</label>
+                <input type="text" id="signupUsername" class="form-input" required />
+            </div>
+            <div class="form-group">
+                <label for="signupEmail" class="input-label">Email</label>
+                <input type="email" id="signupEmail" class="form-input" required />
+            </div>
+            <div class="form-group">
+                <label for="signupPhone" class="input-label">Phone Number</label>
+                <input type="tel" id="signupPhone" class="form-input" required />
+            </div>
+            <div class="form-group">
+                <label for="signupPassword" class="input-label">Password</label>
+                <input type="password" id="signupPassword" class="form-input" required />
+            </div>
+            <button type="submit" class="form-button">Sign Up</button>
+        </form>
+    </div>
+</div>
+
+<script>
+    // [PERBAIKAN 3] SETTING URL UNTUK LAPTOP (LOCALHOST)
+    // Pastikan server.js Anda berjalan di port 3000
+    const backendUrl = ''
+
+    const loginTab = document.getElementById('loginTab');
+    const signupTab = document.getElementById('signupTab');
+    const loginForm = document.getElementById('loginForm');
+    const signupForm = document.getElementById('signupForm');
+    const loginError = document.getElementById('loginError');
+    const signupError = document.getElementById('signupError');
+
+    // UI Switching Logic
+    const showLoginView = () => {
+        loginTab.classList.add('active'); signupTab.classList.remove('active');
+        loginForm.style.display = 'block'; signupForm.style.display = 'none';
+        loginError.style.display = 'none'; signupError.style.display = 'none';
+    };
+    const showSignupView = () => {
+        signupTab.classList.add('active'); loginTab.classList.remove('active');
+        loginForm.style.display = 'none'; signupForm.style.display = 'block';
+        loginError.style.display = 'none'; signupError.style.display = 'none';
+    };
+
+    loginTab.addEventListener('click', showLoginView);
+    signupTab.addEventListener('click', showSignupView);
+
+    // --- SIGN UP LOGIC ---
+    document.getElementById('signupFormContent').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        signupError.style.display = 'none';
+
+        const username = document.getElementById('signupUsername').value;
+        const email = document.getElementById('signupEmail').value;
+        const phone = document.getElementById('signupPhone').value;
+        const password = document.getElementById('signupPassword').value;
+
+        try {
+            console.log(`Mengirim data Sign Up ke: ${backendUrl}/api/signup`);
+            const response = await axios.post(`${backendUrl}/api/signup`, { username, email, phone, password });
+
+            if (response.data.success) {
+                alert('Akun berhasil dibuat! Silakan login.');
+                showLoginView();
+            } else {
+                signupError.textContent = response.data.message;
+                signupError.style.display = 'block';
+            }
+        } catch (error) {
+            console.error('Sign Up Error:', error);
+            signupError.textContent = 'Gagal koneksi ke server. Pastikan server.js jalan!';
+            signupError.style.display = 'block';
+        }
+    });
+
+    // --- LOGIN LOGIC ---
+    document.getElementById('loginFormContent').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        loginError.style.display = 'none';
+
+        const email = document.getElementById('loginEmail').value;
+        const password = document.getElementById('loginPassword').value;
+
+        try {
+            console.log(`Mencoba login ke: ${backendUrl}/api/login`);
+            const response = await axios.post(`${backendUrl}/api/login`, { email, password });
+
+            if (response.data.success) {
+                console.log("Login Sukses:", response.data.user);
+                // [PENTING] Simpan user di Local Storage
+                localStorage.setItem('currentUser', JSON.stringify(response.data.user));
+
+                // Redirect ke Dashboard
+                alert("Login Berhasil! Masuk ke Dashboard...");
+                setTimeout(() => {
+                    window.location.href = "index.html";
+                }, 500);
+
+            } else {
+                loginError.textContent = response.data.message;
+                loginError.style.display = 'block';
+            }
+        } catch (error) {
+            console.error('Login Error:', error);
+            const msg = error.response?.data?.message || 'Gagal terhubung ke server (Connection Refused).';
+            loginError.textContent = msg;
+            loginError.style.display = 'block';
+        }
+    });
+
+    // Init View
+    document.addEventListener('DOMContentLoaded', showLoginView);
+
+</script>
+</body>
+</html>
