@@ -131,16 +131,23 @@ client.on('message', (topic, message) => {
     	extraData = {
         	voltage: voltageVal // Masukkan ke wadah agar terbawa ke database
     	};
-        // KASUS 2: PRESSURE (Berubah ke sis/data)
-        } else if (topic === 'sis/data/pressure') { 
+        // KASUS 2: PRESSURE (dari SIS firmware)
+        } else if (topic === 'sis/data/pressure') {
             sensorValue = sensorData.pressure;
             columnName = 'pressure';
-	    let voltageVal = sensorData.voltage !== undefined ? sensorData.voltage : 0;
-	    extraData = {
-            sv1: sensorData.sv1,     
-            sv2: sensorData.sv2,
-            buzzer: sensorData.buzzer,
-	    voltage: voltageVal
+            let voltageVal = sensorData.voltage !== undefined ? sensorData.voltage : 0;
+
+            // FIX: firmware sends sv1_state/sv2_state ("OPEN"/"CLOSE") & alarm_status ("ON"/"OFF")
+            // Convert string → int for DB (OPEN/ON = 1, CLOSE/OFF = 0)
+            const sv1Val  = sensorData.sv1_state  === 'OPEN' ? 1 : 0;
+            const sv2Val  = sensorData.sv2_state  === 'OPEN' ? 1 : 0;
+            const buzzerVal = sensorData.alarm_status === 'ON' ? 1 : 0;
+
+            extraData = {
+                sv1:    sv1Val,
+                sv2:    sv2Val,
+                buzzer: buzzerVal,
+                voltage: voltageVal
             };
             
         } else {
