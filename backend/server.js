@@ -301,21 +301,34 @@ app.post('/api/login', async (req, res) => { // <-- KOREKSI 4A: TAMBAH async
 });
 
 /// [C] Endpoint API untuk mendapatkan data terbaru (KOREKSI FINAL)
-app.get('/api/latest-data', async (req, res) => { // <<< TAMBAH async
-    // Dipanggil oleh frontend untuk polling data real-time
-    const query = 'SELECT * FROM sensor_data ORDER BY receive_timestamp DESC LIMIT 1';
-    
+app.get('/api/latest-data', async (req, res) => {
     try {
-        // GANTI dbConnection.query DENGAN await queryPromise
-        const result = await queryPromise(query); // <<< WAJIB GUNAKAN queryPromise
-        
-        // Cek jika ada hasil, jika tidak kirim objek kosong
-        res.json(result.length > 0 ? result[0] : {}); 
-        
+        // Query latest non-null TEMPERATURE row separately
+        const tempQuery = `SELECT temperature, voltage_temp, sv1_status, send_timestamp
+                           FROM sensor_data WHERE temperature IS NOT NULL
+                           ORDER BY receive_timestamp DESC LIMIT 1`;
+
+        // Query latest non-null PRESSURE row separately
+        const pressQuery = `SELECT pressure, voltage_pressure, sv1_status, sv2_status,
+                                   buzzer_status, send_timestamp AS pressure_timestamp
+                            FROM sensor_data WHERE pressure IS NOT NULL
+                            ORDER BY receive_timestamp DESC LIMIT 1`;
+
+        const [tempResult, pressResult] = await Promise.all([
+            queryPromise(tempQuery),
+            queryPromise(pressQuery)
+        ]);
+
+        // Merge both into one object so frontend gets both regardless of which arrived last
+        const combined = {
+            ...(tempResult[0]  || {}),
+            ...(pressResult[0] || {})
+        };
+
+        res.json(Object.keys(combined).length > 0 ? combined : {});
+
     } catch (err) {
-        // Log error secara detail di console backend
         console.error('❌ FATAL ERROR DI /api/latest-data:', err.sqlMessage || err.message);
-        // Kirim 500 ke frontend
         res.status(500).send('Gagal mengambil data dari server database.');
     }
 });
