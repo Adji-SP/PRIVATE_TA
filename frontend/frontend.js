@@ -597,15 +597,26 @@ const App = (() => {
     function updateStatusDisplays(sv1, sv2, buzzer) {
         if (dom.sv1StatusElem) {
             dom.sv1StatusElem.textContent = sv1;
-            dom.sv1StatusElem.className = `font-bold ${sv1 === 'OPEN' ? 'text-green-600' : 'text-red-600'}`;
+            // FIX: Set full button classes so bg color is correct (strips old bg-* first)
+            dom.sv1StatusElem.className = sv1 === 'OPEN'
+                ? 'text-white text-xs px-2 py-0.5 rounded bg-green-600 font-bold'
+                : 'text-white text-xs px-2 py-0.5 rounded bg-gray-500 font-bold';
         }
         if (dom.sv2StatusElem) {
             dom.sv2StatusElem.textContent = sv2;
-            dom.sv2StatusElem.className = `font-bold ${sv2 === 'OPEN' ? 'text-green-600' : 'text-red-600'}`;
+            dom.sv2StatusElem.className = sv2 === 'OPEN'
+                ? 'text-white text-xs px-2 py-0.5 rounded bg-green-600 font-bold'
+                : 'text-white text-xs px-2 py-0.5 rounded bg-gray-500 font-bold';
         }
         if (dom.buzzerStatusElem) {
             dom.buzzerStatusElem.textContent = buzzer;
             dom.buzzerStatusElem.className = `font-bold px-2 rounded ${buzzer === 'ON' ? 'buzzer-on' : 'buzzer-off'}`;
+        }
+        // FIX: Also update the alarm-status text in the Solenoid Status box
+        const alarmElem = document.getElementById('alarm-status');
+        if (alarmElem) {
+            alarmElem.textContent = buzzer;
+            alarmElem.className = `monitor-value font-bold ${buzzer === 'ON' ? 'text-red-600' : 'text-gray-600'}`;
         }
     }
 
@@ -826,40 +837,42 @@ const App = (() => {
             if (data.pressure !== null && data.pressure !== undefined) {
 
                 const currentPressure = parseFloat(data.pressure);
+                // FIX: convert integer 0/1 from DB → 'OPEN'/'CLOSE'
                 const sv1Status = data.sv1_status === 1 ? 'OPEN' : 'CLOSE';
                 const sv2Status = data.sv2_status === 1 ? 'OPEN' : 'CLOSE';
+                const buzzerVal  = data.buzzer_status === 1 ? 'ON' : 'OFF';
+                const voltagePress = data.voltage_pressure != null ? parseFloat(data.voltage_pressure) : 0;
+                const timeLabel    = new Date().toLocaleTimeString('id-ID', { hour12: false });
 
-                // FIXED: Ambil Buzzer dari 'buzzer_status' (sesuai kolom DB), bukan 'buzzer'
-                const buzzerVal = (data.buzzer_status === 1 ? 'ON' : 'OFF');
+                // FIX: Always update the RT sensor readings + solenoid status panel
+                // These are shown on the pressure tab regardless of which sub-view is active
+                const rtPressElem = document.getElementById('pressure-rt-pressure');
+                const rtTempElem  = document.getElementById('pressure-rt-temp');
+                if (rtPressElem) rtPressElem.textContent = `${currentPressure.toFixed(2)} Bar`;
+                if (rtTempElem && data.temperature != null) {
+                    rtTempElem.textContent = `${parseFloat(data.temperature).toFixed(2)} °C`;
+                }
 
-                // FIXED: Ambil voltage dari kolom 'voltage_pressure'
-                const voltagePress = data.voltage_pressure !== null ? parseFloat(data.voltage_pressure) : 0;
+                // Always keep SV/Buzzer status current (buttons are always visible on pressure tab)
+                updateStatusDisplays(sv1Status, sv2Status, buzzerVal);
 
-                const timeLabel = new Date().toLocaleTimeString('id-ID', { hour12: false });
+                // FIX: use the pressure tab's own sampling input, not the temperature tab's
+                const pressSamplingInput = document.getElementById('set-pressure-sampling');
+                const currentSamplingTime = pressSamplingInput ? pressSamplingInput.value : 60;
 
-                // Ambil nilai sampling dari input HTML (Safe Check)
-                const samplingInput = document.getElementById('set-sampling');
-                const currentSamplingTime = samplingInput ? samplingInput.value : 60;
-
-                // Update Gauge & Charts (Hanya jika di tab pressure)
+                // Gauge, log table and charts only when on the pressure tab
                 if (config.activeTab === 'pressure') {
                     updateGauge(currentPressure);
-                    updateStatusDisplays(sv1Status, sv2Status, buzzerVal);
 
                     if (chartsInitialized) {
-                        // Increment Counter Log Pressure
                         pressureState.logCounter++;
-
-                        // Update Log Table
                         addPressureLogEntry(
                             currentSamplingTime,
                             pressureState.logCounter,
                             timeLabel,
                             currentPressure,
-                            voltagePress // Updated variable
+                            voltagePress
                         );
-
-                        // Update Charts
                         updatePressureCharts(currentPressure, sv1Status, sv2Status, timeLabel);
                     }
                 }
