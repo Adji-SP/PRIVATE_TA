@@ -398,44 +398,67 @@ app.post('/api/control/valve/:valveId', (req, res) => {
     });
 });
 
-// [F.2] ENDPOINT API UNTUK SIS SIMULATION TOGGLE (ON/OFF)
+// [F.2] ENDPOINT API UNTUK SIS SIMULATION TOGGLE + SECTION CONTROL (ACTUATOR)
 app.post('/api/sis-control', (req, res) => {
-    // 1. Ambil status dari Frontend ("ON" atau "OFF")
-    const { status } = req.body;
-
-    console.log(`[REQUEST RECEIVED] API SIS Control hit: Status = ${status}`);
-
-    // Validasi input
-    if (status !== 'ON' && status !== 'OFF') {
-        return res.status(400).json({ success: false, message: 'Status tidak valid. Harus ON atau OFF.' });
+    // --- Case 1: Legacy SIS simulation ON/OFF toggle ---
+    if (req.body.command === 'SET_SIS_MODE') {
+        const { status } = req.body;
+        if (status !== 'ON' && status !== 'OFF') {
+            return res.status(400).json({ success: false, message: 'Status tidak valid.' });
+        }
+        const payload = { command: 'SET_SIS_MODE', status, timestamp: Date.now() };
+        client.publish('admin/control/sis', JSON.stringify(payload), { qos: 1 }, (err) => {
+            if (err) return res.status(500).json({ success: false, message: 'Gagal kirim.' });
+            console.log(`[CONTROL] SIS Mode → ${status}`);
+            res.json({ success: true, message: `Sistem berhasil di-set ke ${status}` });
+        });
+        return;
     }
 
-    // 2. Siapkan Payload JSON untuk dikirim ke ESP32
-    // Format kita samakan dengan style project Anda
-    const payload = {
-        command: 'SET_SIS_MODE',
-        status: status, // "ON" atau "OFF"
-        timestamp: Date.now()
-    };
+    // --- Case 2: Section Control — manual actuator toggle (SV1 / SV2) ---
+    const { actuator, value } = req.body;
+    const validActuators = ['sv1', 'sv2'];
+    if (!validActuators.includes(actuator) || value === undefined) {
+        return res.status(400).json({ success: false, message: 'Actuator atau value tidak valid.' });
+    }
 
-    // 3. Tentukan Topik MQTT
-    // Kita buat topik khusus agar tidak bentrok dengan valve atau setpoint
-    const topic = 'admin/control/sis';
+    const param = actuator === 'sv1' ? 'sv1_manual' : 'sv2_manual';
+    const payload = JSON.stringify({ parameter: param, value: parseInt(value) });
 
-    // 4. Publish ke MQTT
-    client.publish(topic, JSON.stringify(payload), { qos: 1 }, (err) => {
+    client.publish('admin/control/sis', payload, { qos: 1 }, (err) => {
         if (err) {
             console.error('[MQTT ERROR] Gagal publish SIS Control:', err);
-            return res.status(500).json({ success: false, message: 'Gagal kirim perintah ke MQTT.' });
+            return res.status(500).json({ success: false, message: 'Gagal kirim ke SIS ESP32.' });
         }
+        console.log(`[CONTROL] ${actuator.toUpperCase()} → ${value == 1 ? 'CLOSE' : 'OPEN'}  payload: ${payload}`);
+        res.json({ success: true, message: `${actuator.toUpperCase()} set to ${value == 1 ? 'CLOSE' : 'OPEN'}` });
+    });
+});
 
-        console.log(`[CONTROL SUCCESS] Perintah SIS dikirim ke topik '${topic}': ${status}`);
+// [F.3] ENDPOINT API UNTUK MANUAL STEPPER (BPCS)
+// Body: { value: <20-80>, mode: 'manual' }  OR  { mode: 'auto' }
+app.post('/api/control/stepper', (req, res) => {
+    const { value, mode } = req.body;
 
-        // 5. Balas ke Frontend
-        res.json({
-            success: true,
-            message: `Sistem berhasil di-set ke ${status}`
+    if (mode === 'auto') {
+        const payload = JSON.stringify({ parameter: 'mode', value: 1, timestamp: Date.now() });
+        client.publish('admin/control/setpoints', payload, { qos: 1 }, (err) => {
+            if (err) return res.status(500).json({ success: false, message: 'Gagal kirim.' });
+            console.log('[CONTROL] BPCS Mode → AUTO');
+            res.json({ success: true, message: 'Stepper mode set to AUTO (PID enabled).' });
         });
+        return;
+    }
+
+    const pct = parseFloat(value);
+    if (isNaN(pct) || pct < 0 || pct > 100) {
+        return res.status(400).json({ success: false, message: 'Value harus 0-100.' });
+    }
+    const payload = JSON.stringify({ parameter: 'stepper_manual', value: pct, timestamp: Date.now() });
+    client.publish('admin/control/setpoints', payload, { qos: 1 }, (err) => {
+        if (err) return res.status(500).json({ success: false, message: 'Gagal kirim.' });
+        console.log(`[CONTROL] Stepper MANUAL → ${pct}%`);
+        res.json({ success: true, message: `Stepper set to ${pct}%` });
     });
 });
 

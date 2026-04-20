@@ -116,6 +116,11 @@ const App = (() => {
         window.toggleRecording = toggleRecording;
         window.confirmLogout = confirmLogout;
         window.cancelLogout = cancelLogout; // EXPOSURE KRITIS
+
+        // Section Control
+        window.toggleActuator = toggleActuator;
+        window.sendStepperCommand = sendStepperCommand;
+        window.toggleStepperMode = toggleStepperMode;
     }
 
     // ======================================================================
@@ -353,6 +358,113 @@ const App = (() => {
 
         } else {
             console.log("[SYSTEM] Dibatalkan user.");
+        }
+    }
+
+    // ======================================================================
+    // SECTION CONTROL: SV Actuator + Stepper manual commands
+    // ======================================================================
+
+    // Local state tracking for SV button display
+    const actuatorState = { sv1: 'OPEN', sv2: 'OPEN' };
+    let stepperManualMode = false;
+
+    /**
+     * toggleActuator(type) — called by SV1/SV2 button onclick
+     * ON (green) = valve OPEN; clicking → CLOSE (relay energized)
+     * OFF (gray) = valve CLOSE; clicking → OPEN
+     */
+    async function toggleActuator(type) {
+        const btn = document.getElementById(`${type}-status`);
+        if (!btn) return;
+
+        const isCurrentlyOpen = (actuatorState[type] === 'OPEN');
+        const newValue = isCurrentlyOpen ? 1 : 0;    // 1 = CLOSE
+        const newLabel = isCurrentlyOpen ? 'CLOSE' : 'OPEN';
+
+        try {
+            const res = await fetch('/api/sis-control', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ actuator: type, value: newValue })
+            });
+            const result = await res.json();
+            if (!res.ok) throw new Error(result.message);
+
+            // Optimistic update — confirmed by next poll
+            actuatorState[type] = newLabel;
+            applyActuatorButtonStyle(btn, newLabel);
+            console.log(`[SECTION CTRL] ${type.toUpperCase()} → ${newLabel}`);
+        } catch (err) {
+            console.error('toggleActuator failed:', err);
+            alert(`Gagal kirim perintah ${type.toUpperCase()}. Cek koneksi backend.`);
+        }
+    }
+
+    /** Set button color + text to match valve state */
+    function applyActuatorButtonStyle(btn, state) {
+        // keep the hover/cursor/transition classes, only swap bg color
+        if (state === 'CLOSE') {
+            btn.textContent = 'CLOSE';
+            btn.classList.remove('bg-green-600', 'bg-gray-500');
+            btn.classList.add('bg-red-500');
+        } else {
+            btn.textContent = 'OPEN';
+            btn.classList.remove('bg-red-500', 'bg-gray-500');
+            btn.classList.add('bg-green-600');
+        }
+    }
+
+    /**
+     * sendStepperCommand() — sends stepper_manual % to BPCS
+     */
+    async function sendStepperCommand() {
+        const input = document.getElementById('stepper-value');
+        if (!input) return;
+        const pct = parseFloat(input.value);
+        if (isNaN(pct)) { alert('Masukkan nilai % (20-80).'); return; }
+
+        try {
+            const res = await fetch('/api/control/stepper', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ value: pct, mode: 'manual' })
+            });
+            const result = await res.json();
+            if (!res.ok) throw new Error(result.message);
+            stepperManualMode = true;
+            const modeBtn = document.getElementById('btn-stepper-mode');
+            if (modeBtn) { modeBtn.textContent = 'AUTO'; modeBtn.classList.replace('bg-blue-600', 'bg-orange-500'); }
+            console.log(`[STEPPER] Manual → ${pct}%`);
+        } catch (err) {
+            console.error('sendStepperCommand failed:', err);
+            alert('Gagal kirim perintah stepper.');
+        }
+    }
+
+    /**
+     * toggleStepperMode() — switch between MANUAL and AUTO
+     */
+    async function toggleStepperMode() {
+        const modeBtn = document.getElementById('btn-stepper-mode');
+        if (stepperManualMode) {
+            try {
+                const res = await fetch('/api/control/stepper', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: 'auto' })
+                });
+                const result = await res.json();
+                if (!res.ok) throw new Error(result.message);
+                stepperManualMode = false;
+                if (modeBtn) { modeBtn.textContent = 'MANUAL'; modeBtn.classList.replace('bg-orange-500', 'bg-blue-600'); }
+                console.log('[STEPPER] Mode → AUTO (PID resumed)');
+            } catch (err) {
+                console.error('toggleStepperMode failed:', err);
+                alert('Gagal ubah mode stepper.');
+            }
+        } else {
+            sendStepperCommand();
         }
     }
 
@@ -843,6 +955,18 @@ const App = (() => {
                 const buzzerVal  = data.buzzer_status === 1 ? 'ON' : 'OFF';
                 const voltagePress = data.voltage_pressure != null ? parseFloat(data.voltage_pressure) : 0;
                 const timeLabel    = new Date().toLocaleTimeString('id-ID', { hour12: false });
+
+                // --- Sync SV button visual state from MC (refresh-safe) ---
+                const sv1Btn = document.getElementById('sv1-status');
+                const sv2Btn = document.getElementById('sv2-status');
+                if (sv1Btn && actuatorState.sv1 !== sv1Status) {
+                    actuatorState.sv1 = sv1Status;
+                    applyActuatorButtonStyle(sv1Btn, sv1Status);
+                }
+                if (sv2Btn && actuatorState.sv2 !== sv2Status) {
+                    actuatorState.sv2 = sv2Status;
+                    applyActuatorButtonStyle(sv2Btn, sv2Status);
+                }
 
                 // FIX: Always update the RT sensor readings + solenoid status panel
                 // These are shown on the pressure tab regardless of which sub-view is active

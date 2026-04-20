@@ -266,6 +266,20 @@
         
         <span id="rec-status-temp" class="text-xs text-red-600 font-mono ml-2"></span>
     </div>
+    <!-- Section Control: Stepper / Valve manual -->
+    <div class="flex items-center space-x-2">
+        <span class="text-xs font-semibold text-gray-600">Valve %</span>
+        <input type="number" id="stepper-value" value="50" min="20" max="80"
+               class="w-16 text-xs border border-gray-300 rounded px-1 py-0.5 text-right">
+        <button onclick="sendStepperCommand()"
+                class="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold py-1 px-2 rounded shadow transition">
+            Send
+        </button>
+        <button id="btn-stepper-mode" onclick="toggleStepperMode()"
+                class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1 px-2 rounded shadow transition">
+            MANUAL
+        </button>
+    </div>
     <p class="text-sm text-gray-600">Actuator Validation: <span class="font-bold text-green-600" id="actuator-validation">70%</span></p>
 </div>
 
@@ -406,13 +420,23 @@
                         <!-- KOLOM 2 (1/2): SOLENOID VALVE & SYSTEM STATUS -->
                         <div class="sm:w-1/2 p-2 bg-gray-50 rounded-lg shadow-md border border-gray-200 space-y-1">
                             <h3 class="font-semibold text-gray-800 mb-1 text-sm border-b pb-1">Solenoid Valve & System Status</h3>
+                            <!-- SV1: clickable toggle -->
                             <div class="flex justify-between items-center text-xs">
                                 <span>Solenoid Valve 1</span>
-                                <button class="text-white text-xs px-2 py-0.5 rounded bg-gray-500" disabled id="sv1-status">OFF</button>
+                                <button onclick="toggleActuator('sv1')"
+                                        id="sv1-status"
+                                        class="text-white text-xs px-2 py-0.5 rounded bg-green-600 cursor-pointer hover:opacity-80 transition">
+                                    OPEN
+                                </button>
                             </div>
+                            <!-- SV2: clickable toggle -->
                             <div class="flex justify-between items-center text-xs pb-1 border-b">
                                 <span>Solenoid Valve 2</span>
-                                <button class="text-white text-xs px-2 py-0.5 rounded bg-green-600" disabled id="sv2-status">ON</button>
+                                <button onclick="toggleActuator('sv2')"
+                                        id="sv2-status"
+                                        class="text-white text-xs px-2 py-0.5 rounded bg-green-600 cursor-pointer hover:opacity-80 transition">
+                                    OPEN
+                                </button>
                             </div>
                             <div class="flex justify-between items-center text-xs pt-1">
                                 <span>STATUS ALARM</span>
