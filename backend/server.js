@@ -3,12 +3,12 @@
 // === 1. IMPORTS UTAMA ===
 // Mengimpor semua modul yang diperlukan
 const express = require('express');
-const mqtt = require('mqtt'); 
+const mqtt = require('mqtt');
 const mysql = require('mysql2');
 const bodyParser = require('body-parser');
 const bcrypt = require('bcrypt');
 const util = require('util'); //
-const cors = require('cors'); 
+const cors = require('cors');
 const path = require('path');
 
 
@@ -27,14 +27,14 @@ const dbConfig = {
     database: 'simulator_db',
     ssl: { rejectUnauthorized: false } // WAJIB untuk Azure tanpa file CA };
 };
-let dbConnection; 
+let dbConnection;
 // DEKLARASIKAN QUERY DENGAN PROMISIFY
 let queryPromise; // <-- VARIABEL BARU
 
 // Fungsi untuk membuat dan mengelola koneksi ulang ke database
 function handleDisconnect() {
-dbConnection = mysql.createConnection(dbConfig);
-queryPromise = util.promisify(dbConnection.query).bind(dbConnection); // <-- KOREKSI 2: PROMISIFY WAJIB!
+    dbConnection = mysql.createConnection(dbConfig);
+    queryPromise = util.promisify(dbConnection.query).bind(dbConnection); // <-- KOREKSI 2: PROMISIFY WAJIB!
 
     dbConnection.connect(err => {
         if (err) {
@@ -93,10 +93,11 @@ client.on('connect', () => {
         }
     });
 
-    // 2. Subscribe ke Data Pressure (SIS) 
-    client.subscribe('sis/data/#', (err) => {
+    // 2. Subscribe ke Data Pressure (SIS)
+    // FIX: SIS firmware publishes to 'plant/data/pressure', bukan 'sis/data/#'
+    client.subscribe('plant/data/pressure', (err) => {
         if (!err) {
-            console.log(`✅ Subscribed to: sis/data/# (Pressure)`);
+            console.log(`✅ Subscribed to: plant/data/pressure (Pressure/SIS)`);
         }
     });
 
@@ -120,36 +121,37 @@ client.on('message', (topic, message) => {
         const sendTimestamp = sensorData.send_timestamp;
         let sensorValue = null;
         let columnName = null;
-	let extraData = {};
-        
+        let extraData = {};
+
         // KASUS 1: TEMPERATURE (Tetap di plant/data)
         if (topic === 'plant/data/temperature') {
             sensorValue = sensorData.temperature;
             columnName = 'temperature';
-        let voltageVal = sensorData.voltage !== undefined ? sensorData.voltage : 0;
+            let voltageVal = sensorData.voltage !== undefined ? sensorData.voltage : 0;
 
-    	extraData = {
-        	voltage: voltageVal // Masukkan ke wadah agar terbawa ke database
-    	};
-        // KASUS 2: PRESSURE (dari SIS firmware)
-        } else if (topic === 'sis/data/pressure') {
+            extraData = {
+                voltage: voltageVal // Masukkan ke wadah agar terbawa ke database
+            };
+            // KASUS 2: PRESSURE (dari SIS firmware)
+            // FIX: SIS publishes to 'plant/data/pressure', not 'sis/data/pressure'
+        } else if (topic === 'plant/data/pressure') {
             sensorValue = sensorData.pressure;
             columnName = 'pressure';
             let voltageVal = sensorData.voltage !== undefined ? sensorData.voltage : 0;
 
             // FIX: firmware sends sv1_state/sv2_state ("OPEN"/"CLOSE") & alarm_status ("ON"/"OFF")
             // Convert string → int for DB (OPEN/ON = 1, CLOSE/OFF = 0)
-            const sv1Val  = sensorData.sv1_state  === 'OPEN' ? 1 : 0;
-            const sv2Val  = sensorData.sv2_state  === 'OPEN' ? 1 : 0;
+            const sv1Val = sensorData.sv1_state === 'OPEN' ? 1 : 0;
+            const sv2Val = sensorData.sv2_state === 'OPEN' ? 1 : 0;
             const buzzerVal = sensorData.alarm_status === 'ON' ? 1 : 0;
 
             extraData = {
-                sv1:    sv1Val,
-                sv2:    sv2Val,
+                sv1: sv1Val,
+                sv2: sv2Val,
                 buzzer: buzzerVal,
                 voltage: voltageVal
             };
-            
+
         } else {
             // Abaikan jika topik tidak dikenali (misal topic control)
             return;
@@ -217,7 +219,7 @@ function handleDbUpdate(columnName, sensorValue, sendTimestamp, extraData = {}) 
         if (columnName === 'temperature') {
             // Urutan : Temp, Press, SV1, SV2, Buzzer, Volt_Temp, Volt_Press, Send_Timestamp, Receive_Timestamp
             // Kita masukkan data 'voltage' ke kolom 'voltage_temp'
-            insertValues = [sensorValue, null, 0, 0, 0, 0, voltage, null, sendTimestamp]; 
+            insertValues = [sensorValue, null, 0, 0, 0, 0, voltage, null, sendTimestamp];
         } else {
             // PRESSURE: Masukkan data 'voltage' ke kolom 'voltage_pressure'
             insertValues = [null, sensorValue, 0, sv1, sv2, buzzer, null, voltage, sendTimestamp];
@@ -238,27 +240,27 @@ function handleDbUpdate(columnName, sensorValue, sendTimestamp, extraData = {}) 
 
 app.post('/api/signup', async (req, res) => { // <-- KOREKSI 3A: TAMBAH async
     try {
-    const { username, email, phone, password } = req.body;
-    
-   // --- BCRYPT DIHIDUPKAN KEMBALI ---
+        const { username, email, phone, password } = req.body;
+
+        // --- BCRYPT DIHIDUPKAN KEMBALI ---
         const hash = await bcrypt.hash(password, 10); // <-- KOREKSI 3B: BCRYPT ASYNC
         // --- BCRYPT DIHIDUPKAN KEMBALI ---
 
-    // QUERY MENGGUNAKAN NAMA KOLOM YANG SUDAH ANDA KONFIRMASI
-        const query = 'INSERT INTO users (username, email, phone, password, role) VALUES (?, ?, ?, ?, ?)'; 
-        
+        // QUERY MENGGUNAKAN NAMA KOLOM YANG SUDAH ANDA KONFIRMASI
+        const query = 'INSERT INTO users (username, email, phone, password, role) VALUES (?, ?, ?, ?, ?)';
+
         // KOREKSI 3C: GUNAKAN await queryPromise
         const result = await queryPromise(query, [username, email, phone, hash, 'user']);
-        
+
         console.log(`✅ User ${username} berhasil didaftarkan.`);
         res.status(201).json({ success: true, message: 'Akun berhasil dibuat.' });
-        
+
     } catch (err) {
         if (err.code === 'ER_DUP_ENTRY') {
             return res.status(409).json({ success: false, message: 'Username atau Email sudah terdaftar.' });
         }
         // *** INI ADALAH LOG UTAMA KITA ***
-        console.error('❌ FINAL DB ERROR (Sign Up):', err.sqlMessage || err.message); 
+        console.error('❌ FINAL DB ERROR (Sign Up):', err.sqlMessage || err.message);
         return res.status(500).json({ success: false, message: 'Server error saat pendaftaran.' });
     }
 });
@@ -268,23 +270,23 @@ app.post('/api/signup', async (req, res) => { // <-- KOREKSI 3A: TAMBAH async
 
 app.post('/api/login', async (req, res) => { // <-- KOREKSI 4A: TAMBAH async
     try {
-    const { email, password } = req.body;
-    
-    // Pastikan 5 kolom diambil
-    const query = 'SELECT id, username, email, phone, password, role FROM users WHERE email = ?'; 
+        const { email, password } = req.body;
 
-    // KOREKSI 4B: GUNAKAN await queryPromise
-        const results = await queryPromise(query, [email]); 
-        
+        // Pastikan 5 kolom diambil
+        const query = 'SELECT id, username, email, phone, password, role FROM users WHERE email = ?';
+
+        // KOREKSI 4B: GUNAKAN await queryPromise
+        const results = await queryPromise(query, [email]);
+
         if (results.length === 0) {
             return res.status(401).json({ success: false, message: 'Email tidak terdaftar.' });
         }
-        
+
         const user = results[0];
         const hashedPassword = user.password;
 
         // KOREKSI 4C: BCRYPT ASYNC
-        const isMatch = await bcrypt.compare(password, hashedPassword); 
+        const isMatch = await bcrypt.compare(password, hashedPassword);
 
         if (isMatch) {
             // Login berhasil
@@ -321,7 +323,7 @@ app.get('/api/latest-data', async (req, res) => {
 
         // Merge both into one object so frontend gets both regardless of which arrived last
         const combined = {
-            ...(tempResult[0]  || {}),
+            ...(tempResult[0] || {}),
             ...(pressResult[0] || {})
         };
 
@@ -337,13 +339,13 @@ app.get('/api/latest-data', async (req, res) => {
 app.post('/api/control/setpoint/:param', (req, res) => {
     const param = req.params.param; // parameter yang dikirim (temp, sampling, kp)
     const value = req.body.value;
-    
-    console.log(`[REQUEST RECEIVED] API Control hit: ${param} = ${value}`); 
+
+    console.log(`[REQUEST RECEIVED] API Control hit: ${param} = ${value}`);
 
     if (isNaN(value)) { return res.status(400).send({ success: false, message: 'Nilai tidak valid.' }); }
 
     const payload = { parameter: param, value: value, timestamp: Date.now() };
-    
+
     // PUBLISH ke MQTT (Topic: admin/control/setpoints)
     client.publish('admin/control/setpoints', JSON.stringify(payload), (err) => {
         if (err) { return res.status(500).send({ success: false, message: 'Gagal kirim via MQTT.' }); }
@@ -353,28 +355,42 @@ app.post('/api/control/setpoint/:param', (req, res) => {
 });
 
 // [E] ENDPOINT API UNTUK BATAS TEKANAN (PAH/PAHH - MENU 2)
+// FIX: Map param names correctly → SIS firmware expects 'pressure_pahh' / 'sampling'
+//   'pressure'          -> 'pressure_pahh'  (setShutdownLimit in SIS mqttCallback)
+//   'pressure-sampling' -> 'sampling'       (acknowledged in firmware log)
 app.post('/api/control/pressure-limit/:param', (req, res) => {
-    const param = req.params.param; 
+    const param = req.params.param;
     const value = req.body.value;
-    
+
     if (isNaN(value)) { return res.status(400).send({ success: false, message: 'Nilai tekanan tidak valid.' }); }
 
-    const payload = { parameter: `pressure_${param}`, value: value, timestamp: Date.now() };
-    
-    client.publish('admin/control/setpoints', JSON.stringify(payload), (err) => { // Menggunakan topic yang sama
+    const paramMap = {
+        'pressure':          'pressure_pahh',
+        'pressure-sampling': 'sampling',
+    };
+
+    const mqttParam = paramMap[param];
+    if (!mqttParam) {
+        return res.status(400).send({ success: false, message: `Parameter '${param}' tidak dikenal.` });
+    }
+
+    const payload = { parameter: mqttParam, value: parseFloat(value), timestamp: Date.now() };
+
+    client.publish('admin/control/setpoints', JSON.stringify(payload), { qos: 1 }, (err) => {
         if (err) { return res.status(500).send({ success: false, message: 'Gagal kirim via MQTT.' }); }
-        console.log(`[CONTROL] Batas Tekanan ${param} dikirim: ${value}`);
-        res.send({ success: true, message: `Batas Tekanan ${param} berhasil dikirim.` });
+        console.log(`[CONTROL] Pressure limit '${mqttParam}' dikirim: ${value}`);
+        res.send({ success: true, message: `Setpoint '${mqttParam}' = ${value} Bar berhasil dikirim ke SIS.` });
     });
 });
+
 
 // [F] ENDPOINT API UNTUK TOGGLE VALVE (SV1/SV2 - MENU 2)
 app.post('/api/control/valve/:valveId', (req, res) => {
     const valveId = req.params.valveId;
     const status = req.body.status;
-    
+
     const payload = { command: 'valve_toggle', valve: valveId, status: status, timestamp: Date.now() };
-    
+
     client.publish('admin/control/valve', JSON.stringify(payload), (err) => { // Topic khusus untuk valve
         if (err) { return res.status(500).send({ success: false, message: 'Gagal kirim via MQTT.' }); }
         console.log(`[CONTROL] Valve ${valveId} disetel ke: ${status}`);
@@ -385,21 +401,21 @@ app.post('/api/control/valve/:valveId', (req, res) => {
 // [F.2] ENDPOINT API UNTUK SIS SIMULATION TOGGLE (ON/OFF)
 app.post('/api/sis-control', (req, res) => {
     // 1. Ambil status dari Frontend ("ON" atau "OFF")
-    const { status } = req.body; 
+    const { status } = req.body;
 
     console.log(`[REQUEST RECEIVED] API SIS Control hit: Status = ${status}`);
 
     // Validasi input
-    if (status !== 'ON' && status !== 'OFF') { 
-        return res.status(400).json({ success: false, message: 'Status tidak valid. Harus ON atau OFF.' }); 
+    if (status !== 'ON' && status !== 'OFF') {
+        return res.status(400).json({ success: false, message: 'Status tidak valid. Harus ON atau OFF.' });
     }
 
     // 2. Siapkan Payload JSON untuk dikirim ke ESP32
     // Format kita samakan dengan style project Anda
-    const payload = { 
-        command: 'SET_SIS_MODE', 
+    const payload = {
+        command: 'SET_SIS_MODE',
         status: status, // "ON" atau "OFF"
-        timestamp: Date.now() 
+        timestamp: Date.now()
     };
 
     // 3. Tentukan Topik MQTT
@@ -408,17 +424,17 @@ app.post('/api/sis-control', (req, res) => {
 
     // 4. Publish ke MQTT
     client.publish(topic, JSON.stringify(payload), { qos: 1 }, (err) => {
-        if (err) { 
+        if (err) {
             console.error('[MQTT ERROR] Gagal publish SIS Control:', err);
-            return res.status(500).json({ success: false, message: 'Gagal kirim perintah ke MQTT.' }); 
+            return res.status(500).json({ success: false, message: 'Gagal kirim perintah ke MQTT.' });
         }
 
         console.log(`[CONTROL SUCCESS] Perintah SIS dikirim ke topik '${topic}': ${status}`);
-        
+
         // 5. Balas ke Frontend
-        res.json({ 
-            success: true, 
-            message: `Sistem berhasil di-set ke ${status}` 
+        res.json({
+            success: true,
+            message: `Sistem berhasil di-set ke ${status}`
         });
     });
 });
@@ -428,9 +444,9 @@ app.post('/api/sis-control', (req, res) => {
 // Fungsi utilitas untuk konversi array JSON ke CSV string
 const jsonToCsv = (data, headerColumns) => {
     if (!data || data.length === 0) return headerColumns.join(',') + '\n';
-    
+
     const header = headerColumns.join(',') + '\n';
-    const rows = data.map(obj => 
+    const rows = data.map(obj =>
         headerColumns.map(col => {
             // Tangani nilai null atau undefined
             const value = (obj[col] !== null && obj[col] !== undefined) ? obj[col] : '';
@@ -438,7 +454,7 @@ const jsonToCsv = (data, headerColumns) => {
             return (typeof value === 'string' && value.includes(',')) ? `"${value}"` : value;
         }).join(',')
     ).join('\n');
-    
+
     return header + rows;
 };
 
@@ -446,8 +462,8 @@ const jsonToCsv = (data, headerColumns) => {
 app.get('/api/export/temperature-log', async (req, res) => {
     try {
         // 1. Tangkap parameter start & end dari Frontend
-        const { start, end } = req.query; 
-        
+        const { start, end } = req.query;
+
         const header = ['id', 'temperature', 'sv1_status', 'receive_timestamp'];
         let query = '';
         let params = [];
@@ -482,7 +498,7 @@ app.get('/api/export/pressure-log', async (req, res) => {
     try {
         // 1. Tangkap parameter start & end
         const { start, end } = req.query;
-        
+
         const header = ['id', 'pressure', 'sv1_status', 'sv2_status', 'buzzer_status', 'receive_timestamp'];
         let query = '';
         let params = [];

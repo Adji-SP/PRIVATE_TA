@@ -72,7 +72,7 @@ const App = (() => {
     };
 
     // DOM references - akan diisi pada initDOM()
-     // Elements
+    // Elements
     const dom = {
         userInfo: null,
         currentDate: null,
@@ -112,9 +112,9 @@ const App = (() => {
         window.stopPressureMonitoring = stopPressureMonitoring;
 
         window.downloadLogData = downloadLogData;
-	window.toggleSystem = toggleSystem;
-	window.toggleRecording = toggleRecording;
-	window.confirmLogout = confirmLogout;
+        window.toggleSystem = toggleSystem;
+        window.toggleRecording = toggleRecording;
+        window.confirmLogout = confirmLogout;
         window.cancelLogout = cancelLogout; // EXPOSURE KRITIS
     }
 
@@ -145,49 +145,49 @@ const App = (() => {
         dom.btnExportTemp = document.getElementById('export-temp-csv');
         dom.btnExportPressure = document.getElementById('export-pressure-csv');
 
-    
+
     }
 
     function bindEvents() {
         // Event Listeners untuk Tombol Export
-if (dom.btnExportTemp) {
-    dom.btnExportTemp.addEventListener('click', () => downloadLogData('temperature'));
-}
-if (dom.btnExportPressure) {
-    dom.btnExportPressure.addEventListener('click', () => downloadLogData('pressure'));
-}
+        if (dom.btnExportTemp) {
+            dom.btnExportTemp.addEventListener('click', () => downloadLogData('temperature'));
+        }
+        if (dom.btnExportPressure) {
+            dom.btnExportPressure.addEventListener('click', () => downloadLogData('pressure'));
+        }
     }
 
     // ======================================================================
     // 3) UTILITY / UI FUNCTIONS (global accessible by HTML)
     // ======================================================================
-// frontend.js - GANTI fungsi yang ada di bagian UTILITY/UI FUNCTIONS dengan kode ini.
+    // frontend.js - GANTI fungsi yang ada di bagian UTILITY/UI FUNCTIONS dengan kode ini.
 
-// Download log data menggunakan IPC Native Electron (INI ADALAH SOLUSI YANG BENAR)
+    // Download log data menggunakan IPC Native Electron (INI ADALAH SOLUSI YANG BENAR)
 
-async function downloadLogData(dataType) {
+    async function downloadLogData(dataType) {
         // Ambil state recording yang sesuai
         const rec = recordingState[dataType];
-        
+
         let queryParams = "";
-        
+
         // Logika Cek State Recording
         if (rec && rec.startTime && rec.stopTime) {
             // User sudah selesai merekam (Ada Start & Stop)
             queryParams = `?start=${encodeURIComponent(rec.startTime)}&end=${encodeURIComponent(rec.stopTime)}`;
             console.log(`[EXPORT] Mengambil range: ${rec.startTime} s/d ${rec.stopTime}`);
-        } 
+        }
         else if (rec && rec.startTime && rec.isRecording) {
-             // Sedang merekam tapi tombol export ditekan
-             alert("Peringatan: Recording masih berjalan. Data diambil sampai detik ini.");
-             const now = new Date();
-             const offset = now.getTimezoneOffset() * 60000;
-             const nowStr = (new Date(now - offset)).toISOString().slice(0, 19).replace('T', ' ');
-             queryParams = `?start=${encodeURIComponent(rec.startTime)}&end=${encodeURIComponent(nowStr)}`;
+            // Sedang merekam tapi tombol export ditekan
+            alert("Peringatan: Recording masih berjalan. Data diambil sampai detik ini.");
+            const now = new Date();
+            const offset = now.getTimezoneOffset() * 60000;
+            const nowStr = (new Date(now - offset)).toISOString().slice(0, 19).replace('T', ' ');
+            queryParams = `?start=${encodeURIComponent(rec.startTime)}&end=${encodeURIComponent(nowStr)}`;
         }
         else {
             // Tidak ada recording, konfirmasi ambil 500 data terakhir
-            if(!confirm("Anda belum melakukan Recording. Download 500 data terakhir?")) return;
+            if (!confirm("Anda belum melakukan Recording. Download 500 data terakhir?")) return;
         }
 
         const endpoint = (dataType === 'temperature')
@@ -229,67 +229,74 @@ async function downloadLogData(dataType) {
      */
     // Ganti seluruh fungsi setControlValue Anda dengan kode ini:
 
-async function setControlValue(buttonElement) {
-    try {
-        const inputId = buttonElement.getAttribute('data-input-id');
-        const param = inputId.replace('set-', '');
-        const valueElem = document.getElementById(inputId);
-        if (!valueElem) { alert('Elemen input tidak ditemukan.'); return; }
+    async function setControlValue(buttonElement) {
+        try {
+            const inputId = buttonElement.getAttribute('data-input-id');
+            const param = inputId.replace('set-', '');
+            const valueElem = document.getElementById(inputId);
+            if (!valueElem) { alert('Elemen input tidak ditemukan.'); return; }
 
-        const value = parseFloat(valueElem.value);
-        if (isNaN(value)) { alert('Input tidak valid.'); return; }
+            const value = parseFloat(valueElem.value);
+            if (isNaN(value)) { alert('Input tidak valid.'); return; }
 
-        // --- LOGIC PENENTUAN ENDPOINT BARU (KRITIS) ---
-        let endpoint = `/api/control/setpoint/${param}`; // Default untuk Suhu (Menu 1)
+            // --- LOGIC PENENTUAN ENDPOINT BARU (KRITIS) ---
+            let endpoint = `/api/control/setpoint/${param}`; // Default untuk Suhu (Menu 1)
 
-        // Cek apakah input adalah untuk kontrol TEKANAN (Menu 2)
-        if (param === 'pressure' || param === 'pressure-sampling') { 
-            // Mengarahkan ke endpoint Batas Tekanan
-            endpoint = `/api/control/pressure-limit/${param}`; 
+            // Cek apakah input adalah untuk kontrol TEKANAN (Menu 2)
+            if (param === 'pressure' || param === 'pressure-sampling') {
+                // Mengarahkan ke endpoint Batas Tekanan
+                endpoint = `/api/control/pressure-limit/${param}`;
+            }
+            // ----------------------------------------------
+
+            // --- MENGGUNAKAN FETCH (Pengganti Axios) ---
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ value: value })
+            });
+
+            const result = await response.json(); // Hasil respons JSON
+
+            if (!response.ok) {
+                throw new Error(`Server Error: ${result.message || response.statusText}`);
+            }
+
+            // --- Update config lokal & tampilan Monitoring ---
+            if (param === 'temp')              config.setpoint             = value;
+            if (param === 'sampling')          config.samplingTime         = value;
+            if (param === 'kp')                config.kp                   = value;
+            if (param === 'pressure')          config.pressureSetpoint     = value;
+            if (param === 'pressure-sampling') config.pressureSamplingTime = value;
+
+            // Update tampilan Setpoint Menu 1 (Temperature tab)
+            if (dom.monitorSetTemp)  dom.monitorSetTemp.textContent  = `${config.setpoint} °C`;
+            if (dom.monitorSampling) dom.monitorSampling.textContent = `${config.samplingTime} s`;
+            if (dom.monitorKp)       dom.monitorKp.textContent       = `${config.kp}`;
+
+            // Update tampilan Setpoint Menu 2 (Pressure tab) — immediate UI feedback
+            const elSetPressure   = document.getElementById('monitor-set-pressure');
+            const elPressSampling = document.getElementById('monitor-pressure-sampling');
+            if (param === 'pressure' && elSetPressure) {
+                elSetPressure.textContent = `${value.toFixed(2)} Bar`;
+            }
+            if (param === 'pressure-sampling' && elPressSampling) {
+                elPressSampling.textContent = `${value} s`;
+            }
+
+            console.log(`[CONTROL SUCCESS] Setpoint ${param} = ${value}`);
+            alert(result.message || `Setpoint ${param} berhasil dikirim.`);
+
+        } catch (err) {
+            console.error('Gagal mengirim setpoint:', err);
+            alert('Gagal mengubah setpoint. Detail: Cek koneksi backend/endpoint.');
         }
-        // ----------------------------------------------
-
-        // --- MENGGUNAKAN FETCH (Pengganti Axios) ---
-        const response = await fetch(endpoint, { 
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ value: value }) 
-        });
-
-        const result = await response.json(); // Hasil respons JSON
-        
-        if (!response.ok) {
-            throw new Error(`Server Error: ${result.message || response.statusText}`);
-        }
-        
-        // --- Update config lokal & tampilan Monitoring (Logic Anda) ---
-        if (param === 'temp') config.setpoint = value;
-        if (param === 'sampling') config.samplingTime = value;
-        if (param === 'kp') config.kp = value;
-
-        // Update tampilan Setpoint Menu 1
-        if (dom.monitorSetTemp) dom.monitorSetTemp.textContent = `${config.setpoint} °C`;
-        if (dom.monitorSampling) dom.monitorSampling.textContent = `${config.samplingTime} s`;
-        if (dom.monitorKp) dom.monitorKp.textContent = `${config.kp}`;
-
-        // Update tampilan Menu 2 (Gauge Setpoint jika ID ada)
-        if (param === 'pressure' && document.getElementById('gauge-setpoint')) {
-             document.getElementById('gauge-setpoint').textContent = value.toFixed(1);
-        }
-
-        console.log(`[CONTROL SUCCESS] Setpoint ${param} = ${value}`);
-        alert(result.message || `Setpoint ${param} berhasil dikirim.`);
-
-    } catch (err) {
-        console.error('Gagal mengirim setpoint:', err);
-        alert('Gagal mengubah setpoint. Detail: Cek koneksi backend/endpoint.');
     }
-}
 
-/**
-     * toggleSystem()
-     * Dipanggil dari HTML tombol SIS Simulation ON/OFF
-     */
+    /**
+         * toggleSystem()
+         * Dipanggil dari HTML tombol SIS Simulation ON/OFF
+         */
     async function toggleSystem() {
         const btn = document.getElementById('btn-system-toggle');
         if (!btn) return;
@@ -302,7 +309,7 @@ async function setControlValue(buttonElement) {
         const userConfirmed = confirm(`Apakah Anda yakin ingin ${actionText} SIS Simulation?`);
 
         if (userConfirmed) {
-            
+
             // 2. Ubah Status di Config
             config.isSystemRunning = !config.isSystemRunning;
             const statusString = config.isSystemRunning ? "ON" : "OFF";
@@ -325,11 +332,11 @@ async function setControlValue(buttonElement) {
             // 4. Kirim ke Backend
             try {
                 const response = await fetch('/api/sis-control', {
-                    method: 'POST', 
+                    method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
+                    body: JSON.stringify({
                         command: "SET_SIS_MODE",
-                        status: statusString, 
+                        status: statusString,
                         timestamp: new Date().toISOString()
                     }),
                 });
@@ -349,9 +356,9 @@ async function setControlValue(buttonElement) {
         }
     }
 
-function toggleRecording(type) {
+    function toggleRecording(type) {
         const state = recordingState[type];
-        
+
         // UPDATE ID: Sesuaikan dengan ID tombol di Footer HTML Anda
         const btnId = type === 'temperature' ? 'btn-footer-rec-temp' : 'btn-footer-rec-pressure';
         const statusId = type === 'temperature' ? 'rec-status-temp' : 'rec-status-pressure';
@@ -378,7 +385,7 @@ function toggleRecording(type) {
             }
             // Update Teks Status Kecil
             if (statusElem) statusElem.textContent = `REC: ${state.startTime.split(' ')[1]}`;
-            
+
             console.log(`[REC] ${type} STARTED at ${state.startTime}`);
 
         } else {
@@ -395,10 +402,10 @@ function toggleRecording(type) {
                 btn.classList.remove('bg-red-600', 'hover:bg-red-700', 'animate-pulse');
                 btn.classList.add('bg-gray-500', 'hover:bg-gray-600');
             }
-            
+
             // Bersihkan status
             if (statusElem) statusElem.textContent = "";
-            
+
             console.log(`[REC] ${type} STOPPED at ${state.stopTime}`);
 
             // Notifikasi ke User
@@ -435,7 +442,7 @@ function toggleRecording(type) {
             modal.classList.remove('hidden'); // Tampilkan modal
         } else {
             // Fallback jika modal HTML belum dipasang
-            if(confirm("Logout?")) confirmLogout();
+            if (confirm("Logout?")) confirmLogout();
         }
     }
 
@@ -555,18 +562,18 @@ function toggleRecording(type) {
         if (!dom.gaugeNeedle) return;
 
         // Batas Atas Skala (Sesuai request User: 2.4)
-        const maxGaugeValue = MAX_PRESSURE_BAR; 
+        const maxGaugeValue = MAX_PRESSURE_BAR;
 
         // SUDUT BARU: Setengah Lingkaran
         // -90 derajat = Jam 9 (Kiri Mentok / 0 Bar)
         // +90 derajat = Jam 3 (Kanan Mentok / 2.4 Bar)
         const minAngle = -90;
         const maxAngle = 90;
-        
+
         // Hitung rasio (0.0 sampai 1.0)
         // Math.min/max menjaga agar jarum tidak bablas kalau pressure > 2.4
         const ratio = Math.min(Math.max(pressure / maxGaugeValue, 0), 1);
-        
+
         // Hitung sudut jarum
         const angle = minAngle + (ratio * (maxAngle - minAngle));
 
@@ -577,12 +584,12 @@ function toggleRecording(type) {
         // Update Angka Digital di Tengah
         if (dom.currentPressureDisplay) {
             dom.currentPressureDisplay.textContent = pressure.toFixed(2);
-            
+
             // Opsional: Ubah warna angka jadi merah jika tekanan tinggi
             if (pressure > 2.0) {
-                 dom.currentPressureDisplay.setAttribute('fill', '#dc2626'); // Merah
+                dom.currentPressureDisplay.setAttribute('fill', '#dc2626'); // Merah
             } else {
-                 dom.currentPressureDisplay.setAttribute('fill', '#1f2937'); // Hitam Abu
+                dom.currentPressureDisplay.setAttribute('fill', '#1f2937'); // Hitam Abu
             }
         }
     }
@@ -604,23 +611,23 @@ function toggleRecording(type) {
 
     // frontend.js (Koreksi Aksi B: Menargetkan elemen Log Data Pressure yang benar)
 
-function addPressureLogEntry(samplingSec, counter, time, pressure, voltage) {
-    
-    // --- KOREKSI KRITIS 1: UBAH SELEKTOR DOM ---
-    // Pastikan ID 'pressure-log-table-body' sudah diambil ke dalam dom.logDataPressureBody di initDOM
-    if (!dom.logDataPressureBody) {
-        console.error("Elemen Log Data Pressure Body tidak ditemukan di DOM!");
-        return; 
-    }
-    const tbody = dom.logDataPressureBody; // Menggunakan selektor khusus Menu 2
-    // --- END KOREKSI 1 ---
+    function addPressureLogEntry(samplingSec, counter, time, pressure, voltage) {
 
-    // Perbaikan: Pastikan voltage dikonversi ke number sebelum dikalikan (untuk safety)
-    const voltageNum = parseFloat(voltage);
-    
-    // Insert on top
-    const newRow = tbody.insertRow(0);
-    newRow.innerHTML = `
+        // --- KOREKSI KRITIS 1: UBAH SELEKTOR DOM ---
+        // Pastikan ID 'pressure-log-table-body' sudah diambil ke dalam dom.logDataPressureBody di initDOM
+        if (!dom.logDataPressureBody) {
+            console.error("Elemen Log Data Pressure Body tidak ditemukan di DOM!");
+            return;
+        }
+        const tbody = dom.logDataPressureBody; // Menggunakan selektor khusus Menu 2
+        // --- END KOREKSI 1 ---
+
+        // Perbaikan: Pastikan voltage dikonversi ke number sebelum dikalikan (untuk safety)
+        const voltageNum = parseFloat(voltage);
+
+        // Insert on top
+        const newRow = tbody.insertRow(0);
+        newRow.innerHTML = `
         <td>${counter}</td>
         <td>${samplingSec} Sec.</td>
         <td>${time}</td>
@@ -628,7 +635,7 @@ function addPressureLogEntry(samplingSec, counter, time, pressure, voltage) {
         
         <td>${(voltageNum * 1000).toFixed(0)} mV</td> 
         `;
-        
+
         // Trim older rows to MAX_DATA_POINTS
         while (tbody.rows.length > MAX_DATA_POINTS) { tbody.deleteRow(MAX_DATA_POINTS); }
     }
@@ -645,9 +652,9 @@ function addPressureLogEntry(samplingSec, counter, time, pressure, voltage) {
         pressureState.chartData.sv1.labels.push(t); pressureState.chartData.sv1.data.push(sv1Value);
         pressureState.chartData.sv2.labels.push(t); pressureState.chartData.sv2.data.push(sv2Value);
 
-if (pressureChart) updateChart(pressureChart, t, pressure);
-if (sv1Chart) updateChart(sv1Chart, t, sv1Value);
-if (sv2Chart) updateChart(sv2Chart, t, sv2Value);
+        if (pressureChart) updateChart(pressureChart, t, pressure);
+        if (sv1Chart) updateChart(sv1Chart, t, sv1Value);
+        if (sv2Chart) updateChart(sv2Chart, t, sv2Value);
 
         // trim
         if (pressureState.chartData.pressure.data.length > MAX_DATA_POINTS) {
@@ -764,9 +771,9 @@ if (sv2Chart) updateChart(sv2Chart, t, sv2Value);
         if (dom.liquidLevel) dom.liquidLevel.style.height = `${liquidHeightPercent}%`;
     }
 
-// ======================================================================
-// 8) BACKEND POLLING: updateDataFromBackend (VERSI FIXED)
-// ======================================================================
+    // ======================================================================
+    // 8) BACKEND POLLING: updateDataFromBackend (VERSI FIXED)
+    // ======================================================================
     async function updateDataFromBackend() {
         try {
             const resp = await fetch(`/api/latest-data`);
@@ -779,12 +786,12 @@ if (sv2Chart) updateChart(sv2Chart, t, sv2Value);
             // --- 1. TEMPERATURE HANDLING ---
             // Cek apakah data ini punya nilai Temperature yang VALID (Tidak Null)
             if (data.temperature !== null && data.temperature !== undefined) {
-                
+
                 const currentTemp = parseFloat(data.temperature);
-                
+
                 // FIXED: Ambil voltage dari kolom 'voltage_temp' (bukan 'voltage')
                 const voltageTemp = data.voltage_temp !== null ? parseFloat(data.voltage_temp) : 0;
-                
+
                 const timeLabel = new Date().toLocaleTimeString('id-ID', { hour12: true });
 
                 if (config.activeTab === 'temperature') {
@@ -805,7 +812,7 @@ if (sv2Chart) updateChart(sv2Chart, t, sv2Value);
                         temp: currentTemp.toFixed(2),
                         voltage: voltageTemp.toFixed(2) // Updated variable
                     });
-                    
+
                     if (config.tempLogData.length > config.tempMaxLogEntries) config.tempLogData.pop();
                     if (dom.logTableBody) renderLogTable(config.tempLogData, dom.logTableBody);
 
@@ -817,11 +824,11 @@ if (sv2Chart) updateChart(sv2Chart, t, sv2Value);
             // --- 2. PRESSURE HANDLING ---
             // Cek apakah data ini punya nilai Pressure yang VALID (Tidak Null)
             if (data.pressure !== null && data.pressure !== undefined) {
-                
+
                 const currentPressure = parseFloat(data.pressure);
                 const sv1Status = data.sv1_status === 1 ? 'OPEN' : 'CLOSE';
                 const sv2Status = data.sv2_status === 1 ? 'OPEN' : 'CLOSE';
-                
+
                 // FIXED: Ambil Buzzer dari 'buzzer_status' (sesuai kolom DB), bukan 'buzzer'
                 const buzzerVal = (data.buzzer_status === 1 ? 'ON' : 'OFF');
 
@@ -829,7 +836,7 @@ if (sv2Chart) updateChart(sv2Chart, t, sv2Value);
                 const voltagePress = data.voltage_pressure !== null ? parseFloat(data.voltage_pressure) : 0;
 
                 const timeLabel = new Date().toLocaleTimeString('id-ID', { hour12: false });
-                
+
                 // Ambil nilai sampling dari input HTML (Safe Check)
                 const samplingInput = document.getElementById('set-sampling');
                 const currentSamplingTime = samplingInput ? samplingInput.value : 60;
@@ -839,7 +846,7 @@ if (sv2Chart) updateChart(sv2Chart, t, sv2Value);
                     updateGauge(currentPressure);
                     updateStatusDisplays(sv1Status, sv2Status, buzzerVal);
 
-                    if (chartsInitialized) { 
+                    if (chartsInitialized) {
                         // Increment Counter Log Pressure
                         pressureState.logCounter++;
 
