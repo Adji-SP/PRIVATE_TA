@@ -132,18 +132,19 @@ client.on('message', (topic, message) => {
             extraData = {
                 voltage: voltageVal // Masukkan ke wadah agar terbawa ke database
             };
-            // KASUS 2: PRESSURE (dari SIS firmware)
-            // FIX: SIS publishes to 'plant/data/pressure', not 'sis/data/pressure'
+        // KASUS 2: PRESSURE (dari SIS firmware)
         } else if (topic === 'plant/data/pressure') {
-            sensorValue = sensorData.pressure;
-            columnName = 'pressure';
-            let voltageVal = sensorData.voltage !== undefined ? sensorData.voltage : 0;
+            sensorValue = parseFloat(sensorData.pressure);
+            columnName  = 'pressure';
+            let voltageVal = sensorData.voltage !== undefined ? parseFloat(sensorData.voltage) : 0;
 
-            // FIX: firmware sends sv1_state/sv2_state ("OPEN"/"CLOSE") & alarm_status ("ON"/"OFF")
-            // Convert string → int for DB (OPEN/ON = 1, CLOSE/OFF = 0)
-            const sv1Val = sensorData.sv1_state === 'OPEN' ? 1 : 0;
-            const sv2Val = sensorData.sv2_state === 'OPEN' ? 1 : 0;
-            const buzzerVal = sensorData.alarm_status === 'ON' ? 1 : 0;
+            // FIX: firmware mengirim sv1_state/sv2_state ("OPEN"/"CLOSE") & alarm_status ("ON"/"OFF")
+            // Dukung kedua format: string (firmware baru) & int (lama)
+            const sv1Raw = sensorData.sv1_state;
+            const sv2Raw = sensorData.sv2_state;
+            const sv1Val = (sv1Raw === 'OPEN' || sv1Raw === 1 || sv1Raw === true) ? 1 : 0;
+            const sv2Val = (sv2Raw === 'OPEN' || sv2Raw === 1 || sv2Raw === true) ? 1 : 0;
+            const buzzerVal = (sensorData.alarm_status === 'ON' || sensorData.alarm_status === 1) ? 1 : 0;
 
             extraData = {
                 sv1: sv1Val,

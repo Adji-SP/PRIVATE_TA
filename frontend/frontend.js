@@ -241,7 +241,8 @@ const App = (() => {
             const valueElem = document.getElementById(inputId);
             if (!valueElem) { alert('Elemen input tidak ditemukan.'); return; }
 
-            const value = parseFloat(valueElem.value);
+            const rawInput = valueElem.value.replace(',', '.');  // locale comma → dot
+            const value = parseFloat(rawInput);
             if (isNaN(value)) { alert('Input tidak valid.'); return; }
 
             // --- LOGIC PENENTUAN ENDPOINT BARU (KRITIS) ---
