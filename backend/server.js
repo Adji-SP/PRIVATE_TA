@@ -184,20 +184,22 @@ function handleDbUpdate(columnName, sensorValue, sendTimestamp, extraData = {}) 
 
     if (columnName === 'pressure') {
         // Update Pressure SEKALIGUS status Valve
+        // Cek: baris terakhir yang temperature-nya sudah ada tapi pressure masih NULL
         updateQuery = `
             UPDATE sensor_data
-            SET ${columnName} = ?, sv1_status = ?, sv2_status = ?, buzzer_status = ?, voltage_pressure = ?, send_timestamp = ?, receive_timestamp = NOW()
-            WHERE id = ? AND ${columnName} IS NULL;
+            SET pressure = ?, sv1_status = ?, sv2_status = ?, buzzer_status = ?, voltage_pressure = ?, receive_timestamp = NOW()
+            WHERE id = ? AND pressure IS NULL;
         `;
-        updateValues = [sensorValue, sv1, sv2, buzzer, voltage, sendTimestamp, lastInsertedId];
+        updateValues = [sensorValue, sv1, sv2, buzzer, voltage, lastInsertedId];
     } else {
-        // Update Temperature (Logic lama)
+        // Update Temperature
+        // Cek: baris terakhir yang pressure-nya sudah ada tapi temperature masih NULL
         updateQuery = `
             UPDATE sensor_data
-            SET ${columnName} = ?, send_timestamp = ?, receive_timestamp = NOW()
-            WHERE id = ? AND ${columnName} IS NULL;
+            SET temperature = ?, voltage_temp = ?, receive_timestamp = NOW()
+            WHERE id = ? AND temperature IS NULL;
         `;
-        updateValues = [sensorValue, sendTimestamp, lastInsertedId];
+        updateValues = [sensorValue, voltage, lastInsertedId];
     }
 
     // Eksekusi UPDATE
