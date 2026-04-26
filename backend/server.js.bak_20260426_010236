@@ -19,31 +19,42 @@ const port = 3000; // Port untuk server API
 app.use(bodyParser.json()); // Middleware untuk mengurai JSON body dari request HTTP
 
 // === 2. KONFIGURASI AZURE DATABASE & RECONNECT LOGIC ===
-// === 2. DATABASE — Pool (auto-reconnect, Azure-safe) ===
-const dbPool = mysql.createPool({
+const dbConfig = {
+    // Detail koneksi Azure MySQL Anda yang sudah teruji
     host: 'simulatorserver.mysql.database.azure.com',
-    user: 'auliazqi',
+    user: 'auliazqi', // Kritis: Ditemukan format ini yang berhasil di Azure Flexible Server
     password: 'Admin123',
     database: 'simulator_db',
-    ssl: { rejectUnauthorized: false },
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
-});
+    ssl: { rejectUnauthorized: false } // WAJIB untuk Azure tanpa file CA };
+};
+let dbConnection;
+// DEKLARASIKAN QUERY DENGAN PROMISIFY
+let queryPromise; // <-- VARIABEL BARU
 
-// queryPromise wraps pool.query so all existing code keeps working
-const dbPoolPromise = dbPool.promise();
-const queryPromise  = (sql, params) => dbPoolPromise.query(sql, params).then(([rows]) => rows);
+// Fungsi untuk membuat dan mengelola koneksi ulang ke database
+function handleDisconnect() {
+    dbConnection = mysql.createConnection(dbConfig);
+    queryPromise = util.promisify(dbConnection.query).bind(dbConnection); // <-- KOREKSI 2: PROMISIFY WAJIB!
 
-// Startup connectivity check
-dbPool.getConnection((err, conn) => {
-    if (err) {
-        console.error('❌ Gagal koneksi database:', err.message);
-    } else {
-        console.log('✅ Terkoneksi ke Azure Database.');
-        conn.release();
-    }
-});
+    dbConnection.connect(err => {
+        if (err) {
+            console.error('❌ Gagal connect ke Azure DB (Mencoba Ulang):', err.message);
+            setTimeout(handleDisconnect, 2000); // Coba koneksi ulang setelah 2 detik
+        } else {
+            console.log('✅ Terkoneksi ke Azure Database.');
+        }
+    });
+    // Listener untuk mendeteksi putus koneksi (ECONNRESET/Fatal Error)
+    dbConnection.on('error', err => {
+        if (err.code === 'PROTOCOL_CONNECTION_LOST' || err.fatal) {
+            console.error('⚠️ Koneksi DB Terputus. Memulai Koneksi Ulang...');
+            handleDisconnect();
+        } else {
+            throw err;
+        }
+    });
+}
+handleDisconnect(); // Panggil fungsi saat server startup
 
 // FUNGSI PENGUJIAN QUERY (WAJIB)
 function testDbConnection() {
@@ -192,7 +203,7 @@ function handleDbUpdate(columnName, sensorValue, sendTimestamp, extraData = {}) 
     }
 
     // Eksekusi UPDATE
-    dbPool.query(updateQuery, updateValues, (err, result) => {
+    dbConnection.query(updateQuery, updateValues, (err, result) => {
         if (err) { console.error('❌ Error UPDATE DB:', err.message); return; }
 
         if (result.affectedRows > 0) {
@@ -217,7 +228,7 @@ function handleDbUpdate(columnName, sensorValue, sendTimestamp, extraData = {}) 
             insertValues = [null, sensorValue, 0, sv1, sv2, buzzer, null, voltage, sendTimestamp];
         }
 
-        dbPool.query(insertQuery, insertValues, (err, result) => {
+        dbConnection.query(insertQuery, insertValues, (err, result) => {
             if (err) { console.error('❌ Error INSERT DB:', err.message); return; }
             lastInsertedId = result.insertId;
             console.log(`⭐ INSERT BARU (ID: ${lastInsertedId}) -> Pressure: ${sensorValue}, SV1: ${sv1}, SV2: ${sv2}`);
